@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$/../ChatApp">
       <excludeFolder url="file://$MODULE_DIR$/../ChatApp/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.12 (PythonProject5)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.12 virtualenv at C:\Users\Noor\PycharmProjects\ChatApp\.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
