@@ -1,0 +1,14 @@
+ #Simple Chat Application
+# ===============================
+# Author: Noureldin
+# Description: A simple multi-client chat system built using Python sockets.
+# This project demonstrates TCP communication, threading, and client-server architecture.
+
+# Python version
+python>=3.8
+
+# -------------------------------
+# Core Dependencies
+# -------------------------------
+# socket and threading are part of Python's standard library, no installation needed.
+# Included here for documentation clarity.
