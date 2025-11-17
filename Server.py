@@ -23,7 +23,6 @@ db = sqlite3.connect('chatapp.db', check_same_thread=False)
 cur = db.cursor()
 cur.execute('''CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, text TEXT, ts INTEGER, deleted INTEGER DEFAULT 0, groupchat INTEGER DEFAULT 0)''')
 db.commit()
-clients = []
 aliases = []
 
 
