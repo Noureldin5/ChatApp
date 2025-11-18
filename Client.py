@@ -269,22 +269,25 @@ def main():
                 s.send((json.dumps({"type": "list_groups"}) + "\n").encode())
                 time.sleep(0.1)
             elif cmd == "send":
-                to = input("To (leave blank to send to a group): ").strip()
+                to = input("To (leave blank to send to all, or type 'group' to send to a group): ").strip()
                 msg = input("Message: ")
                 payload = {"type": "chat", "text": msg}
-                if to:
-                    # private message
-                    payload["to"] = to
-                    payload["group"] = False
-                else:
-                    # group message - ask for group name
+                if not to:
+                    #all clients
+                    payload["broadcast"] = True
+                elif to.lower() == "group":
                     group_name = input("Group name: ").strip()
                     if not group_name:
                         print("Group name required.")
                         continue
                     payload["group"] = group_name
                     payload["to"] = group_name
+                else:
+                    # private message
+                    payload["to"] = to
+                    payload["group"] = False
                 s.send((json.dumps(payload) + "\n").encode())
+
             elif cmd == "delete":
                 mid = input("Message ID to delete: ").strip()
                 s.send((json.dumps({"type": "delete_request", "id": mid}) + "\n").encode())

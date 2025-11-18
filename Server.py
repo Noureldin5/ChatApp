@@ -115,23 +115,49 @@ def handle_client(client):
                     online[user] = client
                     user_groups[user] = []
                     broadcast(json.dumps({'type': 'online', 'users': users, 'timezones': timezones}))
+
                 elif typ == 'chat':
                     to = obj.get('to')
                     text = obj.get('text', '')
-                    group = obj.get('group')
+                    group_field = obj.get('group')
+                    broadcast_all = obj.get('broadcast', False)
+
                     global next_msg_id
                     with msg_id_lock:
                         mid = str(next_msg_id)
                         next_msg_id += 1
                     ts = int(time.time())
-                    if group and group in groups:
-                        cur.execute('INSERT INTO messages(sender,receiver,text,ts,groupchat) VALUES(?,?,?,?,1)',
-                                    (user, group, text, ts))
+
+                    # broadcast to everyone
+                    if broadcast_all:
+                        cur.execute('INSERT INTO messages(sender,receiver,text,ts,groupchat) VALUES(?,?,?,?,0)',
+                                    (user, 'ALL', text, ts))
                         db.commit()
-                        msg = {'type': 'message', 'id': mid, 'from': user, 'to': group, 'text': text, 'ts': ts,
+                        msg = {'type': 'message', 'id': mid, 'from': user, 'to': 'ALL', 'text': text, 'ts': ts,
+                               'group': False, 'broadcast': True}
+                        messages.append(msg)
+                        broadcast(json.dumps(msg))
+                        continue
+
+                    group_name = None
+                    if isinstance(group_field, str) and group_field:
+                        group_name = group_field
+                    elif isinstance(group_field, bool) and group_field and isinstance(to, str):
+                        group_name = to
+
+                    if group_name:
+                        if group_name not in groups:
+                            client.send((json.dumps(
+                                {'type': 'error', 'what': 'group_not_found', 'group': group_name}) + "\n").encode(
+                                'utf-8'))
+                            continue
+                        cur.execute('INSERT INTO messages(sender,receiver,text,ts,groupchat) VALUES(?,?,?,?,1)',
+                                    (user, group_name, text, ts))
+                        db.commit()
+                        msg = {'type': 'message', 'id': mid, 'from': user, 'to': group_name, 'text': text, 'ts': ts,
                                'group': True}
                         messages.append(msg)
-                        targets = [online[u] for u in groups[group]['members'] if u in online]
+                        targets = [online[u] for u in groups[group_name]['members'] if u in online]
                         broadcast(json.dumps(msg), targets)
                     else:
                         cur.execute('INSERT INTO messages(sender,receiver,text,ts,groupchat) VALUES(?,?,?,?,0)',
