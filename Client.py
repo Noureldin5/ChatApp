@@ -1,4 +1,4 @@
-# python
+
 import socket
 import threading
 import json
@@ -49,7 +49,6 @@ def print_chat(chat, my_alias):
             else:
                 who = "you" if sender == my_alias else sender
                 print(f"[{mid}] {t} {who}: {msg}")
-                play_notification_sound('notif.wav')
 
 
 def play_notification_sound(filename='notif.wav'):
@@ -203,6 +202,9 @@ def main():
                         }
                         with lock:
                             chat.append(msg_obj)
+                        # play notification only for messages not sent by me
+                        if m.get("from") != alias:
+                            play_notification_sound('notif.wav')
                         print_chat(chat, alias)
                     elif typ == "delete":
                         mid = obj["id"]
@@ -281,6 +283,7 @@ def main():
                         print("Group name required.")
                         continue
                     payload["group"] = group_name
+                    payload["to"] = group_name
                 s.send((json.dumps(payload) + "\n").encode())
             elif cmd == "delete":
                 mid = input("Message ID to delete: ").strip()
