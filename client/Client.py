@@ -1,336 +1,205 @@
-
 import socket
 import threading
 import json
 import sys
 import time
-import winsound
+from typing import List, Dict, Optional
+from .hint import Hint
+from .message_handler import MessageHandler
 
 
+class ChatClient:
+    def __init__(self, host: str = "127.0.0.1", port: int = 59394):
+        self.host = host
+        self.port = port
+        self.socket: Optional[socket.socket] = None
+        self.alias: str = ""
+        self.timezone: str = "UTC+06:00"
 
-def prompt(text, default=None):
-    v = input(text)
-    if not v and default is not None:
-        return default
-    return v
+        self.online_users: List[Dict] = []
+        self.chat_history: List[Dict] = []
+        self.chatlist: List[str] = []
 
+        self.running = True
+        self.lock = threading.Lock()
 
-def print_online(online):
-    print("\nOnline:")
-    for user in online:
-        print(f"  {user['alias']} ({user['timezone']})")
+        self.hint = Hint()
+        self.message_handler = MessageHandler(self)
 
-
-def print_chat(chat, my_alias):
-    print("\n--- Chat ---")
-    for m in chat:
-        if m.get('deleted'):
-            continue
-        t = m['timestamp']
-        sender = m['sender']
-        to = m.get('to')
-        msg = m['message']
-        mid = m['id']
-        is_group = m.get('group', False)
-        if is_group:
-            # group message: show group name as target
-            if sender == my_alias:
-                print(f"[{mid}] {t} you -> group:{to}: {msg}")
-            else:
-                print(f"[{mid}] {t} {sender} -> group:{to}: {msg}")
-        else:
-            if to:
-                if to == my_alias:
-                    print(f"[{mid}] {t} {sender} -> you: {msg}")
-                elif sender == my_alias:
-                    print(f"[{mid}] {t} you -> {to}: {msg}")
-                else:
-                    print(f"[{mid}] {t} {sender} -> {to}: {msg}")
-            else:
-                who = "you" if sender == my_alias else sender
-                print(f"[{mid}] {t} {who}: {msg}")
-
-
-def play_notification_sound(filename='notif.wav'):
-    try:
-        winsound.PlaySound(filename, winsound.SND_FILENAME | winsound.SND_ASYNC)
-    except Exception:
+    def connect(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-        except Exception:
-            print('\a', end='', flush=True)
+            self.socket.connect((self.host, self.port))
+        except Exception as e:
+            print(f"Could not connect to server at {self.host}:{self.port} ({e})")
+            sys.exit(1)
 
-def main():
-    host = "127.0.0.1"
-    port = 59394
-    alias = prompt("Choose an alias: ")
-    tz = prompt("Timezone (e.g. UTC+06:00) [UTC+06:00]: ", "UTC+06:00")
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect((host, port))
-    except Exception as e:
-        print(f"Could not connect to server at {host}:{port} ({e})")
-        sys.exit(1)
-    s.send((json.dumps({"type": "register", "user": alias, "timezone": tz}) + "\n").encode())
-    online = []
-    chat = []
-    chatlist = []
-    lock = threading.Lock()
-    running = True
+    def register(self, alias: str, timezone: str):
+        self.alias = alias
+        self.timezone = timezone
+        msg = json.dumps({"type": "register", "user": alias, "timezone": timezone}) + "\n"
+        self.socket.send(msg.encode())
 
-    def format_ts(ts):
-        try:
-            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(ts)))
-        except:
-            return str(ts)
+    def start(self):
+        receiver_thread = threading.Thread(target=self._receive_messages, daemon=True)
+        receiver_thread.start()
+        self._command_loop()
 
-    def print_help():
-        print("Commands:")
-        print("  send          - send a message. You'll be asked for recipient (blank=group) and message text.")
-        print("  create_group  - create a group and add members.")
-        print("  add           - add a member to a group (you must be the creator).")
-        print("  remove        - remove a member from a group (you must be the creator).")
-        print("  groups        - list groups you belong to.")
-        print("  delete        - delete a message you sent. You need the numeric message ID shown in [id].")
-        print("  history       - view chat history with a specific user or group.")
-        print("  clear         - clear chat history with a specific user or group (only from your view).")
-        print("  chats         - request the list of users you've chatted with from the server.")
-        print("  online        - show current online users and their timezones.")
-        print("  quit          - disconnect and exit the client.")
-        print("Note: Clearing history only affects YOUR view. Others can still see the messages.")
-
-    def receiver():
-        nonlocal online, chat, chatlist, running
+    def _receive_messages(self):
         buffer = b""
-        while running:
+        while self.running:
             try:
-                data = s.recv(4096)
+                data = self.socket.recv(4096)
                 if not data:
                     print("Disconnected from server.")
-                    running = False
+                    self.running = False
                     break
+
                 buffer += data
                 parts = buffer.split(b'\n')
-                buffer = parts.pop()  # remainder
+                buffer = parts.pop()
+
                 for msg in parts:
                     if not msg.strip():
                         continue
                     try:
                         obj = json.loads(msg.decode())
-                    except:
+                        self.message_handler.handle(obj)
+                    except Exception:
                         continue
-                    typ = obj.get("type")
-                    if typ == "online":
-                        with lock:
-                            online = [
-                                {"alias": u, "timezone": t}
-                                for u, t in zip(obj["users"], obj["timezones"])
-                            ]
-                        print_online(online)
-                    elif typ == "chatlist":
-                        with lock:
-                            chatlist = obj.get("users", [])
-                        print("\nChats:")
-                        for c in chatlist:
-                            print(f"  {c}")
-                    elif typ == "group_created":
-                        print(f"\n✓ Group created: {obj.get('group_name')} by {obj.get('created_by')}")
-                    elif typ == "group_modified":
-                        print(f"\n✓ Group modified: {obj.get('group_name')} {obj.get('action')} {obj.get('member')}")
-                    elif typ == "groups_list":
-                        groups = obj.get("groups", [])
-                        print("\nYour groups:")
-                        for g in groups:
-                            print(f"  {g}")
-                    elif typ == "message_history":
-                        with_user = obj.get('with_user', 'unknown')
-                        messages = obj.get('messages', [])
-                        was_cleared = obj.get('cleared', False)
 
-                        print(f"\n=== Chat history with {with_user} ===")
-
-                        if was_cleared:
-                            print("(History was previously cleared - showing messages after clear)")
-
-                        if not messages:
-                            if was_cleared:
-                                print("No new messages since you cleared the history.")
-                            else:
-                                print("No messages found.")
-                        else:
-                            for m in messages:
-                                t = format_ts(m['ts'])
-                                sender = m['from']
-                                to = m.get('to')
-                                msg = m['text']
-                                mid = m['id']
-                                deleted = m.get('deleted', False)
-                                deleted_str = " [DELETED]" if deleted else ""
-                                is_group = m.get('group', False)
-
-                                if is_group:
-                                    who = "you" if sender == alias else sender
-                                    print(f"[{mid}] {t} {who} in group:{to}: {msg}{deleted_str}")
-                                else:
-                                    if to == alias:
-                                        print(f"[{mid}] {t} {sender} -> you: {msg}{deleted_str}")
-                                    elif sender == alias:
-                                        print(f"[{mid}] {t} you -> {to}: {msg}{deleted_str}")
-                                    else:
-                                        print(f"[{mid}] {t} {sender} -> {to}: {msg}{deleted_str}")
-
-                        print("=== End of history ===\n")
-                    elif typ == "history_cleared":
-                        with_user = obj.get('with_user', 'unknown')
-                        print(f"\n✓ Chat history with '{with_user}' has been cleared from your view.")
-                        print("Note: This only affects your view. The other user can still see the messages.\n")
-
-                        with lock:
-                            if obj.get('with_user') and obj.get('with_user') in [m.get('to') for m in chat if m.get('group')]:
-                                chat[:] = [m for m in chat if not (m.get('group') and m.get('to') == obj.get('with_user'))]
-                            else:
-                                chat[:] = [m for m in chat if not (m.get('to') == obj.get('with_user') or m.get('sender') == obj.get('with_user'))]
-                    elif typ == "message":
-                        m = obj
-                        msg_obj = {
-                            "id": m["id"],
-                            "sender": m["from"],
-                            "to": m.get("to"),
-                            "message": m["text"],
-                            "timestamp": format_ts(m["ts"]),
-                            "group": m.get("group", False),
-                        }
-                        with lock:
-                            chat.append(msg_obj)
-                        # play notification only for messages not sent by me
-                        if m.get("from") != alias:
-                            play_notification_sound('notif.wav')
-                        print_chat(chat, alias)
-                    elif typ == "delete":
-                        mid = obj["id"]
-                        with lock:
-                            for m in chat:
-                                if m["id"] == mid:
-                                    m["deleted"] = True
-                        print(f"Message {mid} was deleted by {obj.get('deleted_by', 'unknown')}")
-                        print_chat(chat, alias)
-                    elif typ == "error":
-                        print(f"[error] {obj.get('what')}")
-                    else:
-                        # other events
-                        pass
             except Exception as e:
                 print(f"Error: {e}")
-                running = False
+                self.running = False
                 break
 
-    t = threading.Thread(target=receiver, daemon=True)
-    t.start()
+    def _command_loop(self):
+        self.hint.print_help()
 
-    print_help()
-
-    try:
-        while running:
-            cmd = input("\n[send|create_group|add|remove|groups|delete|chats|history|clear|online|quit]> ").strip()
-            if cmd == "quit":
-                try:
-                    s.send((json.dumps({"type": "disconnect"}) + "\n").encode())
-                except:
-                    pass
-                running = False
-                s.close()
-                break
-            elif cmd == "online":
-                with lock:
-                    print_online(online)
-            elif cmd == "chats":
-                s.send((json.dumps({"type": "chatlist"}) + "\n").encode())
-                time.sleep(0.1)
-            elif cmd == "create_group":
-                g = input("Group name: ").strip()
-                members = input("Members (comma separated, exclude yourself): ").strip().split(',')
-                members = [m.strip() for m in members if m.strip()]
-                payload = {'type': 'create_group', 'group_name': g, 'members': members}
-                s.send((json.dumps(payload) + "\n").encode())
-                time.sleep(0.1)
-            elif cmd == "add":
-                g = input("Group name: ").strip()
-                m = input("Member to add: ").strip()
-                payload = {'type': 'modify_group', 'group_name': g, 'action': 'add', 'member': m}
-                s.send((json.dumps(payload) + "\n").encode())
-                time.sleep(0.1)
-            elif cmd == "remove":
-                g = input("Group name: ").strip()
-                m = input("Member to remove: ").strip()
-                payload = {'type': 'modify_group', 'group_name': g, 'action': 'remove', 'member': m}
-                s.send((json.dumps(payload) + "\n").encode())
-                time.sleep(0.1)
-            elif cmd == "groups":
-                s.send((json.dumps({"type": "list_groups"}) + "\n").encode())
-                time.sleep(0.1)
-            elif cmd == "send":
-                to = input("To (leave blank to send to all, or type 'group' to send to a group): ").strip()
-                msg = input("Message: ")
-                payload = {"type": "chat", "text": msg}
-                if not to:
-                    #all clients
-                    payload["broadcast"] = True
-                elif to.lower() == "group":
-                    group_name = input("Group name: ").strip()
-                    if not group_name:
-                        print("Group name required.")
-                        continue
-                    payload["group"] = group_name
-                    payload["to"] = group_name
-                else:
-                    # private message
-                    payload["to"] = to
-                    payload["group"] = False
-                s.send((json.dumps(payload) + "\n").encode())
-
-            elif cmd == "delete":
-                mid = input("Message ID to delete: ").strip()
-                s.send((json.dumps({"type": "delete_request", "id": mid}) + "\n").encode())
-            elif cmd == "history":
-                with_user = input("View history with (username or group): ").strip()
-                if not with_user:
-                    print("Please specify a username or group")
-                    continue
-                limit_input = input("Number of messages to fetch (default 50): ").strip()
-                limit = int(limit_input) if limit_input.isdigit() else 50
-                payload = {
-                    "type": "message_history",
-                    "with_user": with_user,
-                    "limit": limit
-                }
-                s.send((json.dumps(payload) + "\n").encode())
-                time.sleep(0.2)
-            elif cmd == "clear":
-                with_user = input("Clear history with (username or group): ").strip()
-                if not with_user:
-                    print("Please specify a username or group")
-                    continue
-                confirm = input(
-                    f"Are you sure you want to clear history with '{with_user}'? (yes/no): ").strip().lower()
-                if confirm not in ['yes', 'y']:
-                    print("Clear operation cancelled.")
-                    continue
-                payload = {
-                    "type": "clear_history",
-                    "with_user": with_user
-                }
-                s.send((json.dumps(payload) + "\n").encode())
-                time.sleep(0.1)
-            else:
-                print("Unknown command.")
-    except KeyboardInterrupt:
         try:
-            s.send((json.dumps({"type": "disconnect"}) + "\n").encode())
+            while self.running:
+                cmd = input("\n[send|create_group|add|remove|groups|delete|chats|history|clear|online|qhintt]> ").strip()
+
+                if cmd == "qhintt":
+                    self._disconnect()
+                    break
+                elif cmd == "online":
+                    self._show_online()
+                elif cmd == "chats":
+                    self._request_chatlist()
+                elif cmd == "create_group":
+                    self._create_group()
+                elif cmd == "add":
+                    self._modify_group("add")
+                elif cmd == "remove":
+                    self._modify_group("remove")
+                elif cmd == "groups":
+                    self._list_groups()
+                elif cmd == "send":
+                    self._send_message()
+                elif cmd == "delete":
+                    self._delete_message()
+                elif cmd == "history":
+                    self._view_history()
+                elif cmd == "clear":
+                    self._clear_history()
+                else:
+                    print("Unknown command.")
+
+        except KeyboardInterrupt:
+            self._disconnect()
+
+    def _send_message(self):
+        to = input("To (leave blank to send to all, or type 'group' to send to a group): ").strip()
+        msg = input("Message: ")
+
+        payload = {"type": "chat", "text": msg}
+
+        if not to:
+            payload["broadcast"] = True
+        elif to.lower() == "group":
+            group_name = input("Group name: ").strip()
+            if not group_name:
+                print("Group name reqhintred.")
+                return
+            payload["group"] = group_name
+            payload["to"] = group_name
+        else:
+            payload["to"] = to
+            payload["group"] = False
+
+        self._send(payload)
+
+    def _create_group(self):
+        group_name = input("Group name: ").strip()
+        members_str = input("Members (comma separated, exclude yourself): ").strip()
+        members = [m.strip() for m in members_str.split(',') if m.strip()]
+
+        payload = {'type': 'create_group', 'group_name': group_name, 'members': members}
+        self._send(payload)
+        time.sleep(0.1)
+
+    def _modify_group(self, action: str):
+        group_name = input("Group name: ").strip()
+        member = input(f"Member to {action}: ").strip()
+
+        payload = {'type': 'modify_group', 'group_name': group_name, 'action': action, 'member': member}
+        self._send(payload)
+        time.sleep(0.1)
+
+    def _list_groups(self):
+        self._send({"type": "list_groups"})
+        time.sleep(0.1)
+
+    def _delete_message(self):
+        msg_id = input("Message ID to delete: ").strip()
+        self._send({"type": "delete_request", "id": msg_id})
+
+    def _view_history(self):
+        with_user = input("View history with (username or group): ").strip()
+        if not with_user:
+            print("Please specify a username or group")
+            return
+
+        limit_input = input("Number of messages to fetch (default 50): ").strip()
+        limit = int(limit_input) if limit_input.isdigit() else 50
+
+        payload = {"type": "message_history", "with_user": with_user, "limit": limit}
+        self._send(payload)
+        time.sleep(0.2)
+
+    def _clear_history(self):
+        with_user = input("Clear history with (username or group): ").strip()
+        if not with_user:
+            print("Please specify a username or group")
+            return
+
+        confirm = input(f"Are you sure you want to clear history with '{with_user}'? (yes/no): ").strip().lower()
+        if confirm not in ['yes', 'y']:
+            print("Clear operation cancelled.")
+            return
+
+        payload = {"type": "clear_history", "with_user": with_user}
+        self._send(payload)
+        time.sleep(0.1)
+
+    def _request_chatlist(self):
+        self._send({"type": "chatlist"})
+        time.sleep(0.1)
+
+    def _show_online(self):
+        with self.lock:
+            self.hint.print_online(self.online_users)
+
+    def _disconnect(self):
+        try:
+            self._send({"type": "disconnect"})
         except:
             pass
-        s.close()
-        running = False
+        self.running = False
+        if self.socket:
+            self.socket.close()
 
-
-if __name__ == "__main__":
-    main()
+    def _send(self, payload: dict):
+        msg = json.dumps(payload) + "\n"
+        self.socket.send(msg.encode())
