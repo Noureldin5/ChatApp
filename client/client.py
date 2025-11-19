@@ -4,8 +4,8 @@ import json
 import sys
 import time
 from typing import List, Dict, Optional
-from .hint import Hint
-from .message_handler import MessageHandler
+from .hints import Hints
+from .messageHandler import MessageHandler
 
 
 class ChatClient:
@@ -23,7 +23,7 @@ class ChatClient:
         self.running = True
         self.lock = threading.Lock()
 
-        self.hint = Hint()
+        self.hints = Hints()
         self.message_handler = MessageHandler(self)
 
     def connect(self):
@@ -74,13 +74,13 @@ class ChatClient:
                 break
 
     def _command_loop(self):
-        self.hint.print_help()
+        self.hints.print_help()
 
         try:
             while self.running:
-                cmd = input("\n[send|create_group|add|remove|groups|delete|chats|history|clear|online|qhintt]> ").strip()
+                cmd = input("\n[send|create_group|add|remove|groups|delete|chats|history|clear|online|quit]> ").strip()
 
-                if cmd == "qhintt":
+                if cmd == "quit":
                     self._disconnect()
                     break
                 elif cmd == "online":
@@ -120,7 +120,7 @@ class ChatClient:
         elif to.lower() == "group":
             group_name = input("Group name: ").strip()
             if not group_name:
-                print("Group name reqhintred.")
+                print("Group name required.")
                 return
             payload["group"] = group_name
             payload["to"] = group_name
@@ -189,7 +189,7 @@ class ChatClient:
 
     def _show_online(self):
         with self.lock:
-            self.hint.print_online(self.online_users)
+            self.hints.print_online(self.online_users)
 
     def _disconnect(self):
         try:

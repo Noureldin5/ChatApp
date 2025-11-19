@@ -1,4 +1,4 @@
-from .Server import ChatServer
+from .server import ChatServer
 from .database import Database
 from .models import User, Group
 from .handler import ClientHandler

@@ -1,12 +1,12 @@
 from typing import Dict, Callable
-from .hint import Hint
+from .hints import Hints
 
 
 class MessageHandler:
     def __init__(self, client):
         from .client import ChatClient
         self.client: ChatClient = client
-        self.hint = Hint()
+        self.hints = Hints()
 
     def handle(self, obj: dict):
         msg_type = obj.get("type")
@@ -34,12 +34,12 @@ class MessageHandler:
                 {"alias": u, "timezone": t}
                 for u, t in zip(obj["users"], obj["timezones"])
             ]
-        self.hint.print_online(self.client.online_users)
+        self.hints.print_online(self.client.online_users)
 
     def _handle_chatlist(self, obj: dict):
         with self.client.lock:
             self.client.chatlist = obj.get("users", [])
-        self.hint.print_chats(self.client.chatlist)
+        self.hints.print_chats(self.client.chatlist)
 
     def _handle_group_created(self, obj: dict):
         print(f"\n✓ Group created: {obj.get('group_name')} by {obj.get('created_by')}")
@@ -49,14 +49,14 @@ class MessageHandler:
 
     def _handle_groups_list(self, obj: dict):
         groups = obj.get("groups", [])
-        self.hint.print_groups(groups)
+        self.hints.print_groups(groups)
 
     def _handle_message_history(self, obj: dict):
         with_user = obj.get('with_user', 'unknown')
         messages = obj.get('messages', [])
         was_cleared = obj.get('cleared', False)
 
-        self.hint.print_history_messages(messages, with_user, self.client.alias, was_cleared)
+        self.hints.print_history_messages(messages, with_user, self.client.alias, was_cleared)
 
     def _handle_history_cleared(self, obj: dict):
         with_user = obj.get('with_user', 'unknown')
@@ -76,7 +76,7 @@ class MessageHandler:
             "sender": obj["from"],
             "to": obj.get("to"),
             "message": obj["text"],
-            "timestamp": self.hint.format_timestamp(obj["ts"]),
+            "timestamp": self.hints.format_timestamp(obj["ts"]),
             "group": obj.get("group", False),
         }
 
@@ -85,9 +85,9 @@ class MessageHandler:
 
         # Play notification
         if obj.get("from") != self.client.alias:
-            self.hint.play_notification()
+            self.hints.play_notification()
 
-        self.hint.print_chat_history(self.client.chat_history, self.client.alias)
+        self.hints.print_chat_history(self.client.chat_history, self.client.alias)
 
     def _handle_delete(self, obj: dict):
         msg_id = obj["id"]
@@ -97,7 +97,7 @@ class MessageHandler:
                     m["deleted"] = True
 
         print(f"Message {msg_id} was deleted by {obj.get('deleted_by', 'unknown')}")
-        self.hint.print_chat_history(self.client.chat_history, self.client.alias)
+        self.hints.print_chat_history(self.client.chat_history, self.client.alias)
 
     def _handle_error(self, obj: dict):
         print(f"[error] {obj.get('what')}")

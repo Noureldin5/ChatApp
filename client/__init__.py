@@ -1,4 +1,4 @@
-from .Client import ChatClient
+from .client import ChatClient
 from .models import Message
 from .hints import Hints
 
