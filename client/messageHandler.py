@@ -6,7 +6,6 @@ class MessageHandler:
     def __init__(self, client):
         from .client import ChatClient
         self.client: ChatClient = client
-        self.hints = Hints()
 
     def handle(self, obj: dict):
         msg_type = obj.get("type")
@@ -34,12 +33,12 @@ class MessageHandler:
                 {"alias": u, "timezone": t}
                 for u, t in zip(obj["users"], obj["timezones"])
             ]
-        self.hints.print_online(self.client.online_users)
+        Hints.print_online(self.client.online_users)
 
     def _handle_chatlist(self, obj: dict):
         with self.client.lock:
             self.client.chatlist = obj.get("users", [])
-        self.hints.print_chats(self.client.chatlist)
+        Hints.print_chats(self.client.chatlist)
 
     def _handle_group_created(self, obj: dict):
         print(f"\n✓ Group created: {obj.get('group_name')} by {obj.get('created_by')}")
@@ -49,14 +48,14 @@ class MessageHandler:
 
     def _handle_groups_list(self, obj: dict):
         groups = obj.get("groups", [])
-        self.hints.print_groups(groups)
+        Hints.print_groups(groups)
 
     def _handle_message_history(self, obj: dict):
         with_user = obj.get('with_user', 'unknown')
         messages = obj.get('messages', [])
         was_cleared = obj.get('cleared', False)
 
-        self.hints.print_history_messages(messages, with_user, self.client.alias, was_cleared)
+        Hints.print_history_messages(messages, with_user, self.client.alias, was_cleared)
 
     def _handle_history_cleared(self, obj: dict):
         with_user = obj.get('with_user', 'unknown')
@@ -64,7 +63,6 @@ class MessageHandler:
         print("Note: This only affects your view. The other user can still see the messages.\n")
 
         with self.client.lock:
-            # Remove messages from local chat history
             self.client.chat_history = [
                 m for m in self.client.chat_history
                 if not (m.get('to') == with_user or m.get('sender') == with_user)
@@ -76,18 +74,17 @@ class MessageHandler:
             "sender": obj["from"],
             "to": obj.get("to"),
             "message": obj["text"],
-            "timestamp": self.hints.format_timestamp(obj["ts"]),
+            "timestamp": Hints.format_timestamp(obj["ts"]),
             "group": obj.get("group", False),
         }
 
         with self.client.lock:
             self.client.chat_history.append(msg_obj)
 
-        # Play notification
         if obj.get("from") != self.client.alias:
-            self.hints.play_notification()
+            Hints.play_notification()
 
-        self.hints.print_chat_history(self.client.chat_history, self.client.alias)
+        Hints.print_chat_history(self.client.chat_history, self.client.alias)
 
     def _handle_delete(self, obj: dict):
         msg_id = obj["id"]
@@ -97,7 +94,7 @@ class MessageHandler:
                     m["deleted"] = True
 
         print(f"Message {msg_id} was deleted by {obj.get('deleted_by', 'unknown')}")
-        self.hints.print_chat_history(self.client.chat_history, self.client.alias)
+        Hints.print_chat_history(self.client.chat_history, self.client.alias)
 
     def _handle_error(self, obj: dict):
         print(f"[error] {obj.get('what')}")

@@ -23,7 +23,7 @@ class Hints:
         for msg in messages:
             if msg.get('deleted'):
                 continue
-            UIHelper._print_single_message(msg, my_alias)
+            Hints._print_single_message(msg, my_alias)
 
     @staticmethod
     def _print_single_message(msg: Dict, my_alias: str):
@@ -59,7 +59,7 @@ class Hints:
                 print("No messages found.")
         else:
             for m in messages:
-                t = UIHelper.format_timestamp(m['ts'])
+                t = Hints.format_timestamp(m['ts'])
                 sender = m['from']
                 to = m.get('to')
                 msg_text = m['text']
