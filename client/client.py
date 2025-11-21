@@ -19,6 +19,7 @@ class ChatClient:
         self.online_users: List[Dict] = []
         self.chat_history: List[Dict] = []
         self.chatlist: List[str] = []
+        self.unread_counts: Dict[str, int] = {}
 
         self.running = True
         self.lock = threading.Lock()
@@ -186,6 +187,19 @@ class ChatClient:
     def _request_chatlist(self):
         self._send({"type": "chatlist"})
         time.sleep(0.1)
+        with self.lock:
+            if not self.chatlist:
+                print("No active chats.")
+            else:
+                print("\n=== Your chats ===")
+                for chat in self.chatlist:
+                    unread = self.unread_counts.get(chat, 0)
+                    if unread > 0:
+                        print(f"  {chat} ({unread} unread messages)")
+                    else:
+                        print(f"  {chat}")
+                        print("-----------------\n")
+
 
     def _show_online(self):
         with self.lock:

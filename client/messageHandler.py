@@ -80,6 +80,13 @@ class MessageHandler:
 
         with self.client.lock:
             self.client.chat_history.append(msg_obj)
+        if obj.get("from") != self.client.alias:
+            sender = obj["from"]
+            is_group = obj.get("group", False)
+            counter_key = obj.get("to") if is_group else sender
+
+            self.client.unread_counts[counter_key] = \
+            self.client.unread_counts.get(counter_key, 0) + 1
 
         if obj.get("from") != self.client.alias:
             Hints.play_notification()
