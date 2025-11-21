@@ -38,7 +38,7 @@ class MessageHandler:
     def _handle_chatlist(self, obj: dict):
         with self.client.lock:
             self.client.chatlist = obj.get("users", [])
-        Hints.print_chats(self.client.chatlist)
+        Hints.print_chats(self.client.chatlist, self.client.unread_counts)
 
     def _handle_group_created(self, obj: dict):
         print(f"\n✓ Group created: {obj.get('group_name')} by {obj.get('created_by')}")

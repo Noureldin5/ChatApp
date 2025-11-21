@@ -167,6 +167,10 @@ class ChatClient:
 
         payload = {"type": "message_history", "with_user": with_user, "limit": limit}
         self._send(payload)
+
+        with self.lock:
+            if with_user == self.unread_counts:
+                self.unread_counts[with_user] = 0
         time.sleep(0.2)
 
     def _clear_history(self):

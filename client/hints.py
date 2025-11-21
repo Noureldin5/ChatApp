@@ -82,10 +82,18 @@ class Hints:
         print("=== End of history ===\n")
 
     @staticmethod
-    def print_chats(chatlist: List[str]):
-        print("\nChats:")
-        for chat in chatlist:
-            print(f"  {chat}")
+    def print_chats(chatlist: List[str], unread_counts: Dict):
+        print("\n Your Chats:")
+        if not chatlist:
+            print("  No active chats.")
+        else:
+             for chat in chatlist:
+                 if unread_counts and chat in unread_counts and unread_counts[chat] > 0:
+                     count = unread_cuounts[chat]
+                     print(f"  {chat} ({count} unread messages{'s' if count > 1 else ''})")
+                 else:
+                      print(f"  {chat}")
+        print("-----------------\n")
 
     @staticmethod
     def print_groups(groups: List[str]):
