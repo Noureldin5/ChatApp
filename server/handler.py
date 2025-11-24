@@ -222,6 +222,7 @@ class ClientHandler:
             self.server.delete_group(group_name)
             return
         elif action == 'add':
+
             if not group.add_member(member):
                 self._send_error('already_member')
                 return

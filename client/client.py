@@ -151,14 +151,35 @@ class ChatClient:
         payload = {'type': 'modify_group', 'group_name': group_name, 'action': action}
 
         if action in ('add', 'remove'):
-            member = input(f"Member to {action}: ").strip()
+            if action == 'add':
+                self._send({"type": "online"})
+                time.sleep(0.2)
+                with self.lock:
+                    if not self.online_users:
+                        print("No online users.")
+                        return
+                    print("Online users:")
+                    for idx, user in enumerate(self.online_users,1):
+                        print(f"{idx}. {user['alias']} ({user['timezone']})")
+                    print("-----------------\n")
+                choice = input("Select user").strip()
+                if choice.isdigit():
+                    choice_idx = int(choice) - 1
+                    if 0<= choice_idx < len(self.online_users):
+                        member = self.online_users[choice_idx]['alias']
+                    else:
+                        print("Invalid number.")
+                        return
+                else:
+                    member = choice
+            else:
+                member = input(f"Member to {action}: ").strip()
             if not member:
                 print("Member required.")
                 return
             payload['member'] = member
         else:
             payload['member'] = ''
-
         self._send(payload)
         time.sleep(0.1)
 

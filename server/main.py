@@ -7,9 +7,8 @@ def main():
     try:
         server.start()
     except KeyboardInterrupt:
-        print("\nShutting down...")
-        server.shutdown()
-
+        server.stop()
+        print("Server stopped.")
 
 if __name__ == "__main__":
     main()

@@ -26,6 +26,7 @@ class Database:
                     other_user TEXT,
                     cleared_at INTEGER,
                     PRIMARY KEY (user, other_user))''')
+
         self.db.commit()
 
     def insert_message(self, sender: str, receiver: str, text: str, ts: int, is_group: bool) -> int:
