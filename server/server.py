@@ -89,6 +89,13 @@ class ChatServer:
     def get_group(self, group_name: str) -> Optional[Group]:
         return self.groups.get(group_name)
 
+    def delete_group(self, group_name: str) -> bool:
+        if group_name in self.groups:
+            del self.groups[group_name]
+            self.db.delete_group_messages(group_name)
+            return True
+        return False
+
     def shutdown(self):
         print("Shutting down server...")
         for client in self.clients:

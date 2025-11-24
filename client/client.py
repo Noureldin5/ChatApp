@@ -79,7 +79,7 @@ class ChatClient:
 
         try:
             while self.running:
-                cmd = input("\n[send|create_group|add|remove|groups|delete|chats|history|clear|online|quit]> ").strip()
+                cmd = input("\n[send|create_group|delete_group|add|remove|groups|delete|chats|history|clear|online|quit]> ").strip()
 
                 if cmd == "quit":
                     self._disconnect()
@@ -104,6 +104,8 @@ class ChatClient:
                     self._view_history()
                 elif cmd == "clear":
                     self._clear_history()
+                elif cmd == "delete_group":
+                    self._modify_group("delete_group")
                 else:
                     print("Unknown command.")
 
@@ -142,9 +144,21 @@ class ChatClient:
 
     def _modify_group(self, action: str):
         group_name = input("Group name: ").strip()
-        member = input(f"Member to {action}: ").strip()
+        if not group_name:
+            print("Group name required.")
+            return
 
-        payload = {'type': 'modify_group', 'group_name': group_name, 'action': action, 'member': member}
+        payload = {'type': 'modify_group', 'group_name': group_name, 'action': action}
+
+        if action in ('add', 'remove'):
+            member = input(f"Member to {action}: ").strip()
+            if not member:
+                print("Member required.")
+                return
+            payload['member'] = member
+        else:
+            payload['member'] = ''
+
         self._send(payload)
         time.sleep(0.1)
 

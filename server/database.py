@@ -42,6 +42,13 @@ class Database:
         self.db.commit()
         return self.cur.rowcount > 0
 
+    def delete_group_messages(self, group_name: str):
+        self.cur.execute(
+            'DELETE FROM messages WHERE receiver = ? AND groupchat = 1',
+            (group_name,)
+        )
+        self.db.commit()
+
     def get_message(self, msg_id: str) -> Optional[Tuple[str, str, int]]:
         self.cur.execute('SELECT sender,receiver,groupchat FROM messages WHERE id=?', (msg_id,))
         return self.cur.fetchone()

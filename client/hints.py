@@ -107,6 +107,7 @@ class Hints:
         print("  send          - send a message")
         print("  create_group  - create a group and add members")
         print("  add           - add a member to a group")
+        print("  delete_group  - delete a group and all its messages")
         print("  remove        - remove a member from a group")
         print("  groups        - list groups you belong to")
         print("  delete        - delete a message you sent")

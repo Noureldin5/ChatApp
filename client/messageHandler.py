@@ -18,6 +18,7 @@ class MessageHandler:
             'groups_list': self._handle_groups_list,
             'message_history': self._handle_message_history,
             'history_cleared': self._handle_history_cleared,
+            'group_deleted'
             'message': self._handle_message,
             'delete': self._handle_delete,
             'error': self._handle_error
@@ -45,6 +46,13 @@ class MessageHandler:
 
     def _handle_group_modified(self, obj: dict):
         print(f"\n✓ Group modified: {obj.get('group_name')} {obj.get('action')} {obj.get('member')}")
+
+    def _handle_group_deleted(self, obj: dict):
+        name = obj.get('group_name', 'unknown')
+        print(f"\n✂ Group deleted: {name}")
+        with self.client.lock:
+            if name in self.client.unread_counts:
+                del self.client.unread_counts[name]
 
     def _handle_groups_list(self, obj: dict):
         groups = obj.get("groups", [])

@@ -208,7 +208,20 @@ class ClientHandler:
             self._send_error('not_group_owner')
             return
 
-        if action == 'add':
+        if action == 'delete_group':
+            response = {'type': 'group_deleted', 'group_name': group_name}
+            targets = [self.server.users[m] for m in group.members if m in self.server.users]
+            self.server.broadcast(json.dumps(response), targets)
+
+            for member_name in list(group.members):
+                if member_name in self.server.users:
+                    user_obj = self.server.users[member_name]
+                    if group_name in user_obj.groups:
+                        user_obj.groups.remove(group_name)
+
+            self.server.delete_group(group_name)
+            return
+        elif action == 'add':
             if not group.add_member(member):
                 self._send_error('already_member')
                 return

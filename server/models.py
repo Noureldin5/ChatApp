@@ -47,6 +47,9 @@ class Group:
             return False
         self.members.discard(member)
         return True
+    def delete_group(self):
+        self.members.clear()
+        return True
 
     def is_creator(self, user: str) -> bool:
         #Chect the creator of the group
