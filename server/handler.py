@@ -228,12 +228,20 @@ class ClientHandler:
             self.server.delete_group(group_name)
             return
         elif action == 'add':
+            if member not in self.server.users:
+                self._send_error('user_not_online', {'member': member})
+                return
+
+            if member == self.user.username:
+                self._send_error('cannot_add_self')
+                return
 
             if not group.add_member(member):
                 self._send_error('already_member')
                 return
-            if member in self.server.users:
-                self.server.users[member].groups.append(group_name)
+
+            self.server.users[member].groups.append(group_name)
+
         elif action == 'remove':
             if not group.remove_member(member):
                 self._send_error('not_member')
