@@ -33,7 +33,7 @@ class Database:
 
         self.db.commit()
     def increment_unread(self, user: str, chat_with: str):
-        slef.cur.execute(
+        self.cur.execute(
             'INSERT INTO unread_counts (user, chat_with, count) VALUES (?, ?, 1) '
             'ON CONFLICT (user, chat_with) DO UPDATE SET count = count + 1',
             (user, chat_with)

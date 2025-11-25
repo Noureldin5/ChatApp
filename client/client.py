@@ -48,11 +48,12 @@ class ChatClient:
 
     def _receive_messages(self):
         buffer = b""
+        print(f"[Client] Receiver thread started")
         while self.running:
             try:
                 data = self.socket.recv(4096)
                 if not data:
-                    print("Disconnected from server.")
+                    print("[Client] Disconnected from server.")
                     self.running = False
                     break
 
@@ -65,12 +66,14 @@ class ChatClient:
                         continue
                     try:
                         obj = json.loads(msg.decode())
+                        print(f"[Client] Received: {obj.get('type', 'unknown')}")
                         self.message_handler.handle(obj)
-                    except Exception:
+                    except Exception as e:
+                        print(f"[Client] Message parse error: {e}")
                         continue
 
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"[Client] Receive error: {e}")
                 self.running = False
                 break
 
@@ -162,7 +165,8 @@ class ChatClient:
                     for idx, user in enumerate(self.online_users,1):
                         print(f"{idx}. {user['alias']} ({user['timezone']})")
                     print("-----------------\n")
-                choice = input("Select user").strip()
+
+                choice = input("Select user (number or username): ").strip()
                 if choice.isdigit():
                     choice_idx = int(choice) - 1
                     if 0<= choice_idx < len(self.online_users):

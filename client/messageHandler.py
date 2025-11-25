@@ -18,7 +18,7 @@ class MessageHandler:
             'groups_list': self._handle_groups_list,
             'message_history': self._handle_message_history,
             'history_cleared': self._handle_history_cleared,
-            'group_deleted'
+            'group_deleted': self._handle_group_deleted,
             'message': self._handle_message,
             'delete': self._handle_delete,
             'error': self._handle_error

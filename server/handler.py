@@ -121,9 +121,10 @@ class ClientHandler:
             return
 
         self.server.db.insert_message(self.user.username, group_name, text, ts, True)
+        # Increment unread for all members except sender
         for member in group.members:
             if member != self.user.username:
-                self.server.db.increment_unread(member, self.user.username)
+                self.server.db.increment_unread(member, group_name)
         msg = {
             'type': 'message',
             'id': msg_id,
@@ -324,6 +325,20 @@ class ClientHandler:
             'with_user': chat_with,
             'messages': history,
             'cleared': self.server.db.get_cleared_timestamp(self.user.username, chat_with) > 0
+        }
+        print(f"[Server] Sending message_history response to {self.user.username}: {len(history)} messages")
+        result = self.user.send(json.dumps(response))
+        print(f"[Server] Send result: {result}")
+        self.user.send(json.dumps(response))
+
+    def _handle_get_unread_counts(self, obj: dict):
+        if not self.user:
+            return
+
+        counts = self.server.db.get_all_unread_counts(self.user.username)
+        response = {
+            'type': 'unread_counts',
+            'counts': counts
         }
         self.user.send(json.dumps(response))
 
