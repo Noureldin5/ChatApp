@@ -242,9 +242,33 @@ class ChatGUI(QMainWindow):
             QMessageBox.warning(self, "Error", "Select a group first")
             return
 
-        member, ok = QInputDialog.getText(self, "Add Member", "Username:")
+        self.client._send({"type": "online"})
+
+        QTimer.singleShot(300, self._show_add_member_dialog)
+
+    def _show_add_member_dialog(self):
+        with self.client.lock:
+            online_users = [u['alias'] for u in self.client.online_users if u['alias'] != self.client.alias]
+
+        if not online_users:
+            QMessageBox.warning(self, "No Users", "No online users available to add")
+            return
+
+        member, ok = QInputDialog.getItem(
+            self, "Add Member",
+            "Select user to add:",
+            online_users,
+            0,
+            False
+        )
+
         if ok and member:
-            payload = {'type': 'modify_group', 'group_name': self.current_chat, 'action': 'add', 'member': member}
+            payload = {
+                'type': 'modify_group',
+                'group_name': self.current_chat,
+                'action': 'add',
+                'member': member
+            }
             self.client._send(payload)
             self.status_bar.showMessage(f"Adding {member}...", 2000)
 

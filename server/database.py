@@ -19,7 +19,8 @@ class Database:
                     text TEXT,
                     ts INTEGER,
                     deleted INTEGER DEFAULT 0,
-                    groupchat INTEGER DEFAULT 0)''')
+                    groupchat INTEGER DEFAULT 0
+                    )''')
 
         self.cur.execute('''CREATE TABLE IF NOT EXISTS cleared_history
                    (user TEXT,
@@ -27,7 +28,30 @@ class Database:
                     cleared_at INTEGER,
                     PRIMARY KEY (user, other_user))''')
 
+        self.cur.execute('''CREATE TABLE IF NOT EXISTS unread_counts
+            (user TEXT,chat_with TEXT,count INTEGER DEFAULT 0,PRIMARY KEY (user,chat_with))''')
+
         self.db.commit()
+    def increment_unread(self, user: str, chat_with: str):
+        slef.cur.execute(
+            'INSERT INTO unread_counts (user, chat_with, count) VALUES (?, ?, 1) '
+            'ON CONFLICT (user, chat_with) DO UPDATE SET count = count + 1',
+            (user, chat_with)
+        )
+        self.db.commit()
+    def reset_unread(self, user: str, chat_with: str):
+        self.cur.execute('DELETE FROM unread_counts WHERE user=? AND chat_with=?',
+  (user, chat_with))
+        self.db.commit()
+    def get_unread_count(self, user: str, chat_with: str) -> int:
+        self.cur.execute('SELECT count FROM unread_counts WHERE user=? AND chat_with=?', (user, chat_with))
+        row = self.cur.fetchone()
+        return row[0] if row else 0
+
+    def get_all_unread_counts(self, user: str) -> dict:
+        self.cur.execute('SELECT chat_with, count FROM unread_counts WHERE user=?', (user,))
+        return {row[0]: row[1] for row in self.cur.fetchall()}
+
 
     def insert_message(self, sender: str, receiver: str, text: str, ts: int, is_group: bool) -> int:
 
