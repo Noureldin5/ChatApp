@@ -267,7 +267,6 @@ class ChatGUI(QMainWindow):
             sys.exit()
 
     def _connect(self, username, timezone):
-        """Connect to chat server"""
         try:
             print(f"[GUI] Connecting as {username}...")
             self.client = ChatClient()
