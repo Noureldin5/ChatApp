@@ -121,6 +121,9 @@ class ClientHandler:
             return
 
         self.server.db.insert_message(self.user.username, group_name, text, ts, True)
+        for member in group.members:
+            if member != self.user.username:
+                self.server.db.increment_unread(member, self.user.username)
         msg = {
             'type': 'message',
             'id': msg_id,
@@ -135,6 +138,8 @@ class ClientHandler:
 
     def _send_private_message(self, to: str, msg_id: str, text: str, ts: int):
         self.server.db.insert_message(self.user.username, to, text, ts, False)
+        if to in self.server.users:
+            self.server.db.increment_unread(to, self.user.username)
         msg = {
             'type': 'message',
             'id': msg_id,
@@ -293,8 +298,12 @@ class ClientHandler:
         chat_with = obj.get('with_user')
         limit = obj.get('limit', 50)
 
+        self.server.db.reset_unread(self.user.username, chat_with)
+
         is_group = chat_with in self.server.groups
         rows = self.server.db.get_message_history(self.user.username, chat_with, limit, is_group)
+        rows = self.server.db.get_unread_history(self.user.username, chat_with, limit, is_group)
+
 
         history = []
         for row in rows:
