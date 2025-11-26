@@ -1,5 +1,6 @@
-
 import sqlite3
+import bcrypt
+import time
 from typing import List, Optional, Tuple
 
 
@@ -12,6 +13,14 @@ class Database:
         self._init_tables()
 
     def _init_tables(self):
+        #usertable for auth
+        self.cur.execute('''CREATE TABLE IF NOT EXISTS users
+        (username TEXT PRIMARY KEY,
+         password_hash TEXT NOT NULL,
+         salt TEXT NOT NULL,
+         timezone TEXT DEFAULT 'UTC+06:00',
+            created_at INTEGER NOT NULL)
+                         ''')
         self.cur.execute('''CREATE TABLE IF NOT EXISTS messages
                    (id INTEGER PRIMARY KEY,
                     sender TEXT,
@@ -21,6 +30,7 @@ class Database:
                     deleted INTEGER DEFAULT 0,
                     groupchat INTEGER DEFAULT 0
                     )''')
+
 
         self.cur.execute('''CREATE TABLE IF NOT EXISTS cleared_history
                    (user TEXT,
@@ -32,6 +42,32 @@ class Database:
             (user TEXT,chat_with TEXT,count INTEGER DEFAULT 0,PRIMARY KEY (user,chat_with))''')
 
         self.db.commit()
+
+    def create_user(self, username: str, password:str , timezone:str = 'UTC+06:00') -> bool:
+        try:
+            salt = bcrypt.gensalt()
+            password_hash = bcrypt.hashpw(password.encode('utf-8'),salt)
+            created_at = int(time.time())
+
+            self.cur.execute('''INSERT INTO users (username, password_hash, salt, timezone, created_at) VALUES (?, ?, ?, ?, ?)''',
+                            (username, password_hash.decode('utf-8'), salt.decode('utf-8'), timezone, created_at))
+            self.db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def verify_user(self,username:str,password:str) -> bool:
+        self.cur.execute('SELECT password_hash FROM users WHERE username=?',(username,))
+        row = self.cur.fetchone()
+        if not row:
+            return False
+        stored_hash = row[0].encode('utf-8')
+        return bcrypt.checkpw(password.encode('utf-8'), stored_hash)
+
+    def user_exists(self,username:str) -> bool:
+        self.cur.execute('Select 1 FROM users WHERE username=?',(username,))
+        return self.cur.fetchone() is not None
+
     def increment_unread(self, user: str, chat_with: str):
         self.cur.execute(
             'INSERT INTO unread_counts (user, chat_with, count) VALUES (?, ?, 1) '
