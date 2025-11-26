@@ -409,13 +409,11 @@ class ChatGUI(QMainWindow):
             self.setWindowTitle(f"Chat - {self.client.alias}")
             self.status_bar.showMessage(f"✓ Connected as {self.client.alias}")
 
-            # Load unread counts from database
-            QTimer.singleShot(500, self._load_unread_counts)
+            # Load initial data
+            QTimer.singleShot(200, self._load_unread_counts)
+            QTimer.singleShot(400, self._initial_refresh)
 
-            # Initial data load
-            QTimer.singleShot(1000, self._initial_refresh)
-
-            # Set up periodic refresh (every 5 seconds)
+            # Set up periodic refresh (every 10 seconds)
             self._start_periodic_refresh()
         else:
             print("[GUI] Authentication may have failed, waiting...")
@@ -437,7 +435,7 @@ class ChatGUI(QMainWindow):
         """Use QTimer for thread-safe periodic refresh"""
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._auto_refresh)
-        self.refresh_timer.start(5000)  # Refresh every 5 seconds
+        self.refresh_timer.start(10000)  # Refresh every 10 seconds
 
     def _auto_refresh(self):
         """Auto-refresh callback (runs in GUI thread)"""
@@ -454,7 +452,6 @@ class ChatGUI(QMainWindow):
         try:
             if msg_type == 'login_success':
                 username = obj.get('username')
-                self.status_bar.showMessage(f"✓ Logged in as {username}", 5000)
                 print(f"[GUI] Login successful for {username}")
             elif msg_type == 'signup_success':
                 username = obj.get('username')
@@ -480,16 +477,21 @@ class ChatGUI(QMainWindow):
                 }
 
                 error_msg = error_messages.get(error_type, details)
-                QMessageBox.warning(self, "Error", error_msg)
 
-                # If auth failed, show login dialog again
+                # Only show message box for auth errors
                 auth_errors = ['invalid_credentials', 'username_taken', 'weak_password',
                                'invalid_input', 'signup_failed', 'not_authenticated',
                                'registration_disabled', 'already_logged_in']
+
                 if error_type in auth_errors:
+                    QMessageBox.warning(self, "Error", error_msg)
                     if self.client:
                         self.client.running = False
                     self._show_login()
+                else:
+                    # For other errors, just show in status bar
+                    self.status_bar.showMessage(f"❌ {error_msg}", 3000)
+
             elif msg_type == 'message':
                 self._handle_new_message(obj)
             elif msg_type == 'chatlist':
@@ -504,8 +506,8 @@ class ChatGUI(QMainWindow):
                 self._update_unread_indicators()
             elif msg_type == 'group_created':
                 group_name = obj.get('group_name', 'Unknown')
-                self.status_bar.showMessage(f"✓ Group '{group_name}' created!", 3000)
-                QTimer.singleShot(500, self._refresh_groups)
+                self.status_bar.showMessage(f"✓ Group '{group_name}' created", 2000)
+                QTimer.singleShot(200, self._refresh_groups)
             elif msg_type == 'group_deleted':
                 group = obj.get('group_name', '')
                 with self.client.lock:
@@ -519,8 +521,8 @@ class ChatGUI(QMainWindow):
                     self.chat_header.setText("Select a chat to start")
                     self.messages_area.clear()
 
-                self.status_bar.showMessage(f"✓ Group '{group}' deleted", 3000)
-                QTimer.singleShot(300, self._refresh_groups)
+                self.status_bar.showMessage(f"✓ Group '{group}' deleted", 2000)
+                QTimer.singleShot(200, self._refresh_groups)
             elif msg_type == 'group_modified':
                 action = obj.get('action', '')
                 member = obj.get('member', '')
@@ -531,11 +533,12 @@ class ChatGUI(QMainWindow):
                     'remove': f"✓ Removed {member} from {group}",
                 }.get(action, f"Modified: {action}")
 
-                self.status_bar.showMessage(action_msg, 3000)
-                QTimer.singleShot(500, self._refresh_groups)
+                self.status_bar.showMessage(action_msg, 2000)
+                QTimer.singleShot(200, self._refresh_groups)
             elif msg_type == 'history_cleared':
-                self.messages_area.clear()
-                self.messages_area.append("✓ History cleared\n")
+                if self.current_chat:
+                    self.messages_area.clear()
+                    self.messages_area.append("✓ History cleared\n")
                 self.status_bar.showMessage("✓ History cleared", 2000)
             elif msg_type == 'delete':
                 self._handle_message_delete(obj)
@@ -546,14 +549,8 @@ class ChatGUI(QMainWindow):
                         {"alias": u, "timezone": t}
                         for u, t in zip(obj.get("users", []), obj.get("timezones", []))
                     ]
-            elif msg_type == 'error':
-                error_msg = obj.get('what', 'Unknown error')
-                details = obj.get('details', '')
-                full_msg = f"{error_msg}: {details}" if details else error_msg
-                self.status_bar.showMessage(f"❌ {full_msg}", 5000)
-                QMessageBox.warning(self, "Error", full_msg)
         except Exception as e:
-            print(f"GUI update error: {e}")
+            print(f"[GUI] Update error: {e}")
             import traceback
             traceback.print_exc()
 
@@ -577,6 +574,12 @@ class ChatGUI(QMainWindow):
 
             self._update_unread_indicators()
 
+            # Refresh the appropriate list to show unread indicator
+            if is_group:
+                self._refresh_groups()
+            else:
+                self._refresh_chats()
+
             # Play notification sound
             try:
                 Hints.play_notification()
@@ -589,10 +592,6 @@ class ChatGUI(QMainWindow):
 
     def _handle_message_delete(self, obj):
         """Handle message deletion notification"""
-        msg_id = obj.get('id')
-        deleted_by = obj.get('deleted_by', 'unknown')
-
-        self.status_bar.showMessage(f"✓ Message {msg_id} deleted by {deleted_by}", 3000)
 
         # Reload history if currently viewing the affected chat
         if self.current_chat:
@@ -655,8 +654,11 @@ class ChatGUI(QMainWindow):
         was_cleared = obj.get('cleared', False)
         with_user = obj.get('with_user', self.current_chat)
 
+        # Only update if viewing the same chat
+        if with_user != self.current_chat:
+            return
+
         self.messages_area.clear()
-        self.status_bar.showMessage("✓ Loaded", 1000)
 
         if was_cleared:
             self.messages_area.append("ℹ️ History was cleared previously\n")
@@ -667,19 +669,6 @@ class ChatGUI(QMainWindow):
             for msg in messages:
                 self._display_single_message(msg)
 
-    def _check_loading_timeout(self, chat_name):
-        """Check if still loading after timeout"""
-        if self.current_chat == chat_name and "Loading" in self.messages_area.toPlainText():
-            self.messages_area.clear()
-            self.messages_area.append(
-                f"⚠️ Failed to load messages.\n\n"
-                f"Possible reasons:\n"
-                f"• Server not responding\n"
-                f"• Network issue\n"
-                f"• Connection lost\n\n"
-                f"Try clicking 🔄 Refresh or reconnecting."
-            )
-            self.status_bar.showMessage("❌ Loading timeout", 3000)
 
     # ============ Chat List Updates ============
 
@@ -738,7 +727,7 @@ class ChatGUI(QMainWindow):
                 self.group_list.setCurrentItem(item)
 
     def _update_unread_indicators(self):
-        """Update window title and lists with unread counts"""
+        """Update window title with unread counts"""
         with self.client.lock:
             total_unread = sum(self.client.unread_counts.values())
 
@@ -747,9 +736,6 @@ class ChatGUI(QMainWindow):
         else:
             self.setWindowTitle(f"Chat - {self.client.alias}")
 
-        # Refresh lists to show updated unread counts
-        self._refresh_chats()
-        self._refresh_groups()
 
     # ============ Chat Selection ============
 
@@ -781,16 +767,12 @@ class ChatGUI(QMainWindow):
 
         self._update_unread_indicators()
 
-        # Load message history
+        # Load message history (no loading screen)
         self.messages_area.clear()
-        self.messages_area.append("⏳ Loading messages...")
-        self.status_bar.showMessage("Loading messages...")
 
         payload = {"type": "message_history", "with_user": self.current_chat, "limit": 50}
         try:
             self.client._send(payload)
-            # Set timeout for loading (2 seconds)
-            QTimer.singleShot(2000, lambda: self._check_loading_timeout(self.current_chat))
         except Exception as e:
             self.messages_area.clear()
             self.messages_area.append(f"❌ Failed to load messages: {e}")
@@ -824,16 +806,12 @@ class ChatGUI(QMainWindow):
 
         self._update_unread_indicators()
 
-        # Load group message history
+        # Load group message history (no loading screen)
         self.messages_area.clear()
-        self.messages_area.append("⏳ Loading group messages...")
-        self.status_bar.showMessage("Loading messages...")
 
         payload = {"type": "message_history", "with_user": self.current_chat, "limit": 50}
         try:
             self.client._send(payload)
-            # Set timeout for loading (2 seconds)
-            QTimer.singleShot(2000, lambda: self._check_loading_timeout(self.current_chat))
         except Exception as e:
             self.messages_area.clear()
             self.messages_area.append(f"❌ Failed to load messages: {e}")
@@ -878,12 +856,8 @@ class ChatGUI(QMainWindow):
         try:
             self.client._send(payload)
             self.message_input.clear()
-            self.status_bar.showMessage("✓ Sent", 1000)
         except Exception as e:
             self.status_bar.showMessage(f"❌ Failed: {e}", 3000)
-            QMessageBox.critical(self, "Send Error", f"Failed to send message: {e}")
-            self.status_bar.showMessage(f"❌ Failed: {e}", 3000)
-            QMessageBox.critical(self, "Send Error", f"Failed to send message: {e}")
 
     # ============ Message Operations ============
 
@@ -901,9 +875,7 @@ class ChatGUI(QMainWindow):
         if ok and msg_id.strip():
             try:
                 self.client._send({"type": "delete_request", "id": msg_id.strip()})
-                self.status_bar.showMessage(f"Deleting message {msg_id}...", 2000)
             except Exception as e:
-                self.status_bar.showMessage(f"❌ Failed: {e}", 3000)
                 QMessageBox.critical(self, "Error", f"Failed to delete message: {e}")
 
     def _clear_history(self):
@@ -923,7 +895,6 @@ class ChatGUI(QMainWindow):
         if reply == QMessageBox.Yes:
             payload = {"type": "clear_history", "with_user": self.current_chat}
             self.client._send(payload)
-            self.status_bar.showMessage("Clearing history...", 2000)
 
     # ============ Group Management ============
 
@@ -959,7 +930,6 @@ class ChatGUI(QMainWindow):
 
         try:
             self.client._send(payload)
-            self.status_bar.showMessage(f"Creating group '{group_name}'...", 2000)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create group: {e}")
 
@@ -976,10 +946,8 @@ class ChatGUI(QMainWindow):
             QMessageBox.warning(self, "Error", f"Failed to fetch online users: {e}")
             return
 
-        self.status_bar.showMessage("Fetching online users...", 1000)
-
         # Wait for response then show dialog
-        QTimer.singleShot(600, self._show_add_member_dialog)
+        QTimer.singleShot(300, self._show_add_member_dialog)
 
     def _show_add_member_dialog(self):
         """Show dialog to select user to add"""
@@ -1008,7 +976,6 @@ class ChatGUI(QMainWindow):
             }
             try:
                 self.client._send(payload)
-                self.status_bar.showMessage(f"Adding {member} to {self.current_chat}...", 2000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to add member: {e}")
 
@@ -1033,7 +1000,6 @@ class ChatGUI(QMainWindow):
             }
             try:
                 self.client._send(payload)
-                self.status_bar.showMessage(f"Removing {member} from {self.current_chat}...", 2000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to remove member: {e}")
 
@@ -1060,7 +1026,6 @@ class ChatGUI(QMainWindow):
             }
             try:
                 self.client._send(payload)
-                self.status_bar.showMessage(f"Deleting group '{self.current_chat}'...", 2000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete group: {e}")
 
@@ -1070,23 +1035,23 @@ class ChatGUI(QMainWindow):
         """Manually trigger refresh"""
         self._refresh_chats()
         self._refresh_groups()
-        self.status_bar.showMessage("✓ Refreshed", 2000)
+        self.status_bar.showMessage("🔄 Refreshed", 1500)
 
     def _refresh_chats(self):
         """Request updated chat list from server"""
         if self.client and self.client.running:
             try:
                 self.client._send({"type": "chatlist"})
-            except:
-                pass
+            except Exception as e:
+                print(f"[GUI] Failed to refresh chats: {e}")
 
     def _refresh_groups(self):
         """Request updated groups list from server"""
         if self.client and self.client.running:
             try:
                 self.client._send({"type": "list_groups"})
-            except:
-                pass
+            except Exception as e:
+                print(f"[GUI] Failed to refresh groups: {e}")
 
     def _show_online_users(self):
         """Show list of online users"""
@@ -1094,10 +1059,9 @@ class ChatGUI(QMainWindow):
             return
 
         self.client._send({"type": "online"})
-        self.status_bar.showMessage("Fetching online users...", 1000)
 
         # Wait for response then show
-        QTimer.singleShot(300, self._display_online_users)
+        QTimer.singleShot(200, self._display_online_users)
 
     def _display_online_users(self):
         """Display online users dialog"""
