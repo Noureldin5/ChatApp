@@ -13,6 +13,7 @@ class ClientHandler:
         self.server: ChatServer = server
         self.client = client
         self.user: Optional[User] = None
+        self.authenticated = False
         self.buffer = ""
 
     def handle(self):
@@ -42,10 +43,22 @@ class ClientHandler:
                 continue
 
     def _handle_message(self, obj: dict):
-        #Route message based on type
         msg_type = obj.get('type')
+        if not self.authenticated:
+            if msg_type == 'login':
+                self._handle_login(obj)
+            elif msg_type == 'signup':
+                self._handle_signup(obj)
+            elif msg_type == 'register':
+                self._handle_register(obj)
+            else:
+                self._send_error('not_authenticated',
+                    {'details': 'Please login or signup first'})
+            return    
 
-        handlers: Dict[str, Callable] = {
+        handlers = {
+            'login': self._handle_login,
+            'signup': self._handle_signup,
             'register': self._handle_register,
             'chat': self._handle_chat,
             'clear_history': self._handle_clear_history,
@@ -56,6 +69,8 @@ class ClientHandler:
             'chatlist': self._handle_chatlist,
             'online': self._handle_online,
             'message_history': self._handle_message_history,
+            'get_unread_counts': self._handle_get_unread_counts,
+            'mark_read': self._handle_mark_read,
             'disconnect': self._handle_disconnect
         }
 
@@ -63,17 +78,86 @@ class ClientHandler:
         if handler:
             handler(obj)
 
-    def _handle_register(self, obj: dict):
-        #user registration
-        username = obj.get('user')
-        timezone = obj.get('timezone', 'UTC+06:00')
+    def _handle_login(self, obj: dict):
+        username = obj.get('username', '').strip()
+        password = obj.get('password', '')
 
-        user = self.server.register_user(username, self.client, timezone)
-        if not user:
-            self._send_error('duplicate_user')
+        if not username or not password:
+            self._send_error('invalid_credentials',
+                             {'details': 'Username and password required'})
             return
 
-        self.user = user
+        if self.server.db.verify_user(username, password):
+            if username in self.server.users:
+                self._send_error('already_logged_in',
+                                 {'details': 'User already connected'})
+                return
+
+            self.server.db.cur.execute(
+                'SELECT timezone FROM users WHERE username = ?', (username,))
+            timezone = self.server.db.cur.fetchone()[0]
+
+            user = self.server.register_user(username, self.client, timezone)
+            self.user = user
+            self.authenticated = True
+
+            response = {
+                'type': 'login_success',
+                'username': username,
+                'timezone': timezone
+            }
+            self.user.send(json.dumps(response))
+
+            # Broadcast online status to all users
+            self.server.broadcast_online()
+
+            # Send initial data to newly logged in user
+            import time
+            time.sleep(0.2)
+            self._handle_online({})
+            self._handle_chatlist({})
+        else:
+            self._send_error('invalid_credentials',
+                             {'details': 'Invalid username or password'})
+
+    def _handle_signup(self, obj: dict):
+        username = obj.get('username', '').strip()
+        password = obj.get('password', '')
+        timezone = obj.get('timezone', 'UTC+06:00')
+
+        if not username or not password:
+            self._send_error('invalid_input',
+                             {'details': 'Username and password required'})
+            return
+
+        if len(password) < 6:
+            self._send_error('weak_password',
+                             {'details': 'Password must be at least 6 characters'})
+            return
+
+        if self.server.db.user_exists(username):
+            self._send_error('username_taken',
+                             {'details': f'Username "{username}" already exists'})
+            return
+
+        if self.server.db.create_user(username, password, timezone):
+            response = {
+                'type': 'signup_success',
+                'username': username,
+                'message': 'Account created! You can now login.'
+            }
+            try:
+                msg = json.dumps(response) + '\n'
+                self.client.send(msg.encode('utf-8'))
+            except:
+                pass
+        else:
+            self._send_error('signup_failed',
+                             {'details': 'Failed to create account'})
+
+    def _handle_register(self, obj: dict):
+        self._send_error('registration_disabled',
+            {'details': 'Please use login or signup instead. Direct registration is disabled for security.'})
 
     def _handle_chat(self, obj: dict):
         # message
@@ -349,6 +433,14 @@ class ClientHandler:
             'counts': counts
         }
         self.user.send(json.dumps(response))
+
+    def _handle_mark_read(self, obj: dict):
+        if not self.user:
+            return
+
+        with_user = obj.get('with_user')
+        if with_user:
+            self.server.db.reset_unread(self.user.username, with_user)
 
     def _handle_disconnect(self, obj: dict):
         self._cleanup()

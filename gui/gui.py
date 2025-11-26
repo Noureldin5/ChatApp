@@ -23,30 +23,119 @@ class SignalEmitter(QObject):
 class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Login to Chat")
+        self.setWindowTitle("Chat Login")
         self.setModal(True)
-        self.resize(350, 150)
+        self.resize(400, 280)
 
-        layout = QFormLayout()
-        layout.setSpacing(15)
+        main_layout = QVBoxLayout()
 
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter your username")
-        layout.addRow("Username:", self.username_input)
+        # Tab widget for login/signup
+        self.tabs = QTabWidget()
 
-        self.timezone_input = QLineEdit("UTC+06:00")
-        self.timezone_input.setPlaceholderText("e.g., UTC+06:00")
-        layout.addRow("Timezone:", self.timezone_input)
+        # Login tab
+        login_tab = QWidget()
+        login_layout = QFormLayout()
+        login_layout.setSpacing(15)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
+        self.login_username = QLineEdit()
+        self.login_username.setPlaceholderText("Enter your username")
+        login_layout.addRow("Username:", self.login_username)
 
-        self.setLayout(layout)
+        self.login_password = QLineEdit()
+        self.login_password.setPlaceholderText("Enter your password")
+        self.login_password.setEchoMode(QLineEdit.Password)
+        login_layout.addRow("Password:", self.login_password)
+
+        login_buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        login_buttons.accepted.connect(self._do_login)
+        login_buttons.rejected.connect(self.reject)
+        login_layout.addRow(login_buttons)
+
+        login_tab.setLayout(login_layout)
+
+        # Signup tab
+        signup_tab = QWidget()
+        signup_layout = QFormLayout()
+        signup_layout.setSpacing(15)
+
+        self.signup_username = QLineEdit()
+        self.signup_username.setPlaceholderText("Choose a username")
+        signup_layout.addRow("Username:", self.signup_username)
+
+        self.signup_password = QLineEdit()
+        self.signup_password.setPlaceholderText("Choose a password (min 6 chars)")
+        self.signup_password.setEchoMode(QLineEdit.Password)
+        signup_layout.addRow("Password:", self.signup_password)
+
+        self.signup_confirm = QLineEdit()
+        self.signup_confirm.setPlaceholderText("Confirm password")
+        self.signup_confirm.setEchoMode(QLineEdit.Password)
+        signup_layout.addRow("Confirm:", self.signup_confirm)
+
+        self.signup_timezone = QLineEdit("UTC+06:00")
+        self.signup_timezone.setPlaceholderText("e.g., UTC+06:00")
+        signup_layout.addRow("Timezone:", self.signup_timezone)
+
+        signup_buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        signup_buttons.accepted.connect(self._do_signup)
+        signup_buttons.rejected.connect(self.reject)
+        signup_layout.addRow(signup_buttons)
+
+        signup_tab.setLayout(signup_layout)
+
+        # Add tabs
+        self.tabs.addTab(login_tab, "Login")
+        self.tabs.addTab(signup_tab, "Sign Up")
+
+        main_layout.addWidget(self.tabs)
+        self.setLayout(main_layout)
+
+        self.auth_mode = None  # 'login' or 'signup'
+        self.username = None
+        self.password = None
+        self.timezone = "UTC+06:00"
+
+    def _do_login(self):
+        """Handle login button click"""
+        username = self.login_username.text().strip()
+        password = self.login_password.text()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter both username and password")
+            return
+
+        self.auth_mode = 'login'
+        self.username = username
+        self.password = password
+        self.accept()
+
+    def _do_signup(self):
+        """Handle signup button click"""
+        username = self.signup_username.text().strip()
+        password = self.signup_password.text()
+        confirm = self.signup_confirm.text()
+        timezone = self.signup_timezone.text().strip() or "UTC+06:00"
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter username and password")
+            return
+
+        if len(password) < 6:
+            QMessageBox.warning(self, "Error", "Password must be at least 6 characters")
+            return
+
+        if password != confirm:
+            QMessageBox.warning(self, "Error", "Passwords do not match")
+            return
+
+        self.auth_mode = 'signup'
+        self.username = username
+        self.password = password
+        self.timezone = timezone
+        self.accept()
 
     def get_credentials(self):
-        return self.username_input.text().strip(), self.timezone_input.text().strip() or "UTC+06:00"
+        return self.auth_mode, self.username, self.password, self.timezone
 
 
 class ChatGUI(QMainWindow):
@@ -257,38 +346,68 @@ class ChatGUI(QMainWindow):
         """Show login dialog"""
         dialog = LoginDialog(self)
         if dialog.exec_() == QDialog.Accepted:
-            username, timezone = dialog.get_credentials()
-            if username:
-                self._connect(username, timezone)
+            auth_mode, username, password, timezone = dialog.get_credentials()
+            if username and password:
+                self._connect(auth_mode, username, password, timezone)
             else:
-                QMessageBox.warning(self, "Error", "Username is required")
+                QMessageBox.warning(self, "Error", "Username and password are required")
                 self._show_login()
         else:
             sys.exit()
 
-    def _connect(self, username, timezone):
+    def _connect(self, auth_mode, username, password, timezone):
         try:
             print(f"[GUI] Connecting as {username}...")
             self.client = ChatClient()
-
-            # Override message handler to emit signals to GUI thread
-            def gui_message_handler(obj):
-                self.signal_emitter.update_gui.emit(obj)
-
-            self.client.message_handler.handle = gui_message_handler
             self.client.connect()
             print(f"[GUI] Connected to server")
 
-            self.client.register(username, timezone)
-            print(f"[GUI] Registered as {username}")
+            # Store credentials for potential re-auth
+            self._username = username
+            self._auth_mode = auth_mode
+            self._timezone = timezone
+
+            # Override message handler to emit signals to GUI thread
+            original_handler = self.client.message_handler.handle
+
+            def gui_message_handler(obj):
+                try:
+                    original_handler(obj)
+                except Exception as e:
+                    print(f"[GUI] Original handler error: {e}")
+
+                self.signal_emitter.update_gui.emit(obj)
+
+            self.client.message_handler.handle = gui_message_handler
 
             # Start receiver thread
             receiver_thread = threading.Thread(target=self.client._receive_messages, daemon=True)
             receiver_thread.start()
             print(f"[GUI] Receiver thread started")
 
-            self.setWindowTitle(f"Chat - {username}")
-            self.status_bar.showMessage(f"✓ Connected as {username}")
+            # Send login or signup request
+            if auth_mode == 'login':
+                self.client.login(username, password)
+                print(f"[GUI] Sent login request for {username}")
+            elif auth_mode == 'signup':
+                self.client.signup(username, password, timezone)
+                print(f"[GUI] Sent signup request for {username}")
+
+            # Wait a bit for auth response before setting up UI
+            QTimer.singleShot(500, lambda: self._finalize_connection(username))
+
+        except Exception as e:
+            print(f"[GUI] Connection error: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Connection Error", f"Failed to connect: {e}")
+            self._show_login()
+
+    def _finalize_connection(self, username):
+        """Finalize connection after successful authentication"""
+        if self.client and self.client.running and self.client.alias:
+            self.setWindowTitle(f"Chat - {self.client.alias}")
+            self.status_bar.showMessage(f"✓ Connected as {self.client.alias}")
 
             # Load unread counts from database
             QTimer.singleShot(500, self._load_unread_counts)
@@ -298,13 +417,8 @@ class ChatGUI(QMainWindow):
 
             # Set up periodic refresh (every 5 seconds)
             self._start_periodic_refresh()
-
-        except Exception as e:
-            print(f"[GUI] Connection error: {e}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(self, "Connection Error", f"Failed to connect: {e}")
-            self._show_login()
+        else:
+            print("[GUI] Authentication may have failed, waiting...")
 
     def _load_unread_counts(self):
         """Request unread counts from server on startup"""
@@ -338,7 +452,45 @@ class ChatGUI(QMainWindow):
         msg_type = obj.get('type')
 
         try:
-            if msg_type == 'message':
+            if msg_type == 'login_success':
+                username = obj.get('username')
+                self.status_bar.showMessage(f"✓ Logged in as {username}", 5000)
+                print(f"[GUI] Login successful for {username}")
+            elif msg_type == 'signup_success':
+                username = obj.get('username')
+                message = obj.get('message', 'Account created!')
+                QMessageBox.information(self, "Success", f"{message}\nPlease login with your credentials.")
+                # Disconnect and show login dialog again
+                if self.client:
+                    self.client.running = False
+                self._show_login()
+            elif msg_type == 'error':
+                error_type = obj.get('what', 'unknown')
+                details = obj.get('details', 'An error occurred')
+
+                error_messages = {
+                    'invalid_credentials': 'Invalid username or password',
+                    'already_logged_in': 'User already connected from another session',
+                    'username_taken': 'Username already exists',
+                    'weak_password': 'Password must be at least 6 characters',
+                    'invalid_input': 'Invalid input provided',
+                    'signup_failed': 'Failed to create account',
+                    'not_authenticated': 'Authentication required. Please login first.',
+                    'registration_disabled': 'Direct registration disabled. Please use login or signup.'
+                }
+
+                error_msg = error_messages.get(error_type, details)
+                QMessageBox.warning(self, "Error", error_msg)
+
+                # If auth failed, show login dialog again
+                auth_errors = ['invalid_credentials', 'username_taken', 'weak_password',
+                               'invalid_input', 'signup_failed', 'not_authenticated',
+                               'registration_disabled', 'already_logged_in']
+                if error_type in auth_errors:
+                    if self.client:
+                        self.client.running = False
+                    self._show_login()
+            elif msg_type == 'message':
                 self._handle_new_message(obj)
             elif msg_type == 'chatlist':
                 self._update_chat_list(obj.get('users', []))
@@ -347,7 +499,6 @@ class ChatGUI(QMainWindow):
             elif msg_type == 'message_history':
                 self._display_history(obj)
             elif msg_type == 'unread_counts':
-                # Load unread counts from server
                 with self.client.lock:
                     self.client.unread_counts = obj.get('counts', {})
                 self._update_unread_indicators()
@@ -622,6 +773,12 @@ class ChatGUI(QMainWindow):
             if self.current_chat in self.client.unread_counts:
                 self.client.unread_counts[self.current_chat] = 0
 
+        # Update database
+        try:
+            self.client._send({"type": "mark_read", "with_user": self.current_chat})
+        except:
+            pass
+
         self._update_unread_indicators()
 
         # Load message history
@@ -630,7 +787,14 @@ class ChatGUI(QMainWindow):
         self.status_bar.showMessage("Loading messages...")
 
         payload = {"type": "message_history", "with_user": self.current_chat, "limit": 50}
-        self.client._send(payload)
+        try:
+            self.client._send(payload)
+            # Set timeout for loading (2 seconds)
+            QTimer.singleShot(2000, lambda: self._check_loading_timeout(self.current_chat))
+        except Exception as e:
+            self.messages_area.clear()
+            self.messages_area.append(f"❌ Failed to load messages: {e}")
+            self.status_bar.showMessage(f"❌ Error: {e}", 3000)
 
     def _on_group_select(self, item):
         """Handle group selection"""
@@ -652,6 +816,12 @@ class ChatGUI(QMainWindow):
             if self.current_chat in self.client.unread_counts:
                 self.client.unread_counts[self.current_chat] = 0
 
+        # Update database
+        try:
+            self.client._send({"type": "mark_read", "with_user": self.current_chat})
+        except:
+            pass
+
         self._update_unread_indicators()
 
         # Load group message history
@@ -660,7 +830,14 @@ class ChatGUI(QMainWindow):
         self.status_bar.showMessage("Loading messages...")
 
         payload = {"type": "message_history", "with_user": self.current_chat, "limit": 50}
-        self.client._send(payload)
+        try:
+            self.client._send(payload)
+            # Set timeout for loading (2 seconds)
+            QTimer.singleShot(2000, lambda: self._check_loading_timeout(self.current_chat))
+        except Exception as e:
+            self.messages_area.clear()
+            self.messages_area.append(f"❌ Failed to load messages: {e}")
+            self.status_bar.showMessage(f"❌ Error: {e}", 3000)
 
     def _on_tab_changed(self, index):
         """Handle tab change between Chats and Groups"""
@@ -691,14 +868,20 @@ class ChatGUI(QMainWindow):
             "type": "chat",
             "text": text,
             "to": self.current_chat,
-            "group": is_group
         }
+
+        if is_group:
+            payload["group"] = self.current_chat
+        else:
+            payload["group"] = False
 
         try:
             self.client._send(payload)
             self.message_input.clear()
             self.status_bar.showMessage("✓ Sent", 1000)
         except Exception as e:
+            self.status_bar.showMessage(f"❌ Failed: {e}", 3000)
+            QMessageBox.critical(self, "Send Error", f"Failed to send message: {e}")
             self.status_bar.showMessage(f"❌ Failed: {e}", 3000)
             QMessageBox.critical(self, "Send Error", f"Failed to send message: {e}")
 
@@ -787,11 +970,16 @@ class ChatGUI(QMainWindow):
             return
 
         # Request online users first
-        self.client._send({"type": "online"})
+        try:
+            self.client._send({"type": "online"})
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to fetch online users: {e}")
+            return
+
         self.status_bar.showMessage("Fetching online users...", 1000)
 
         # Wait for response then show dialog
-        QTimer.singleShot(400, self._show_add_member_dialog)
+        QTimer.singleShot(600, self._show_add_member_dialog)
 
     def _show_add_member_dialog(self):
         """Show dialog to select user to add"""
@@ -818,8 +1006,11 @@ class ChatGUI(QMainWindow):
                 'action': 'add',
                 'member': member
             }
-            self.client._send(payload)
-            self.status_bar.showMessage(f"Adding {member} to {self.current_chat}...", 2000)
+            try:
+                self.client._send(payload)
+                self.status_bar.showMessage(f"Adding {member} to {self.current_chat}...", 2000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to add member: {e}")
 
     def _remove_member_from_group(self):
         """Remove a member from the current group"""
@@ -840,8 +1031,11 @@ class ChatGUI(QMainWindow):
                 'action': 'remove',
                 'member': member
             }
-            self.client._send(payload)
-            self.status_bar.showMessage(f"Removing {member} from {self.current_chat}...", 2000)
+            try:
+                self.client._send(payload)
+                self.status_bar.showMessage(f"Removing {member} from {self.current_chat}...", 2000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to remove member: {e}")
 
     def _delete_current_group(self):
         """Delete the current group (creator only)"""
@@ -864,8 +1058,11 @@ class ChatGUI(QMainWindow):
                 'action': 'delete_group',
                 'member': ''
             }
-            self.client._send(payload)
-            self.status_bar.showMessage(f"Deleting group '{self.current_chat}'...", 2000)
+            try:
+                self.client._send(payload)
+                self.status_bar.showMessage(f"Deleting group '{self.current_chat}'...", 2000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete group: {e}")
 
     # ============ Refresh Methods ============
 

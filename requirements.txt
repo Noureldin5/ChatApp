@@ -12,3 +12,9 @@ python>=3.8
 # -------------------------------
 # socket and threading are part of Python's standard library, no installation needed.
 # Included here for documentation clarity.
+
+# Authentication
+bcrypt>=4.0.1
+
+# GUI
+PyQt5>=5.15.0

@@ -41,6 +41,14 @@ class ChatClient:
         msg = json.dumps({"type": "register", "user": alias, "timezone": timezone}) + "\n"
         self.socket.send(msg.encode())
 
+    def login(self, username: str, password: str):
+        msg = json.dumps({"type": "login", "username": username, "password": password}) + "\n"
+        self.socket.send(msg.encode())
+
+    def signup(self, username: str, password: str, timezone: str = "UTC+06:00"):
+        msg = json.dumps({"type": "signup", "username": username, "password": password, "timezone": timezone}) + "\n"
+        self.socket.send(msg.encode())
+
     def start(self):
         receiver_thread = threading.Thread(target=self._receive_messages, daemon=True)
         receiver_thread.start()

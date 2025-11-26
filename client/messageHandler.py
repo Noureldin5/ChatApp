@@ -21,7 +21,10 @@ class MessageHandler:
             'group_deleted': self._handle_group_deleted,
             'message': self._handle_message,
             'delete': self._handle_delete,
-            'error': self._handle_error
+            'error': self._handle_error,
+            'login_success': self._handle_login_success,
+            'signup_success': self._handle_signup_success,
+            'unread_counts': self._handle_unread_counts
         }
 
         handler = handlers.get(msg_type)
@@ -113,3 +116,22 @@ class MessageHandler:
 
     def _handle_error(self, obj: dict):
         print(f"[error] {obj.get('what')}")
+
+    def _handle_login_success(self, obj: dict):
+        username = obj.get('username')
+        timezone = obj.get('timezone', 'UTC+06:00')
+        self.client.alias = username
+        self.client.timezone = timezone
+        print(f"\n✓ Login successful! Welcome {username}")
+
+    def _handle_signup_success(self, obj: dict):
+        username = obj.get('username')
+        message = obj.get('message', 'Account created!')
+        print(f"\n✓ {message}")
+        print(f"Username: {username}")
+
+    def _handle_unread_counts(self, obj: dict):
+        counts = obj.get('counts', {})
+        with self.client.lock:
+            self.client.unread_counts = counts
+
