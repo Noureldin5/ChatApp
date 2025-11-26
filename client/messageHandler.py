@@ -115,7 +115,10 @@ class MessageHandler:
         Hints.print_chat_history(self.client.chat_history, self.client.alias)
 
     def _handle_error(self, obj: dict):
-        print(f"[error] {obj.get('what')}")
+        error_type = obj.get('what', 'unknown')
+        details = obj.get('details', 'An error occurred')
+        print(f"\n❌ ERROR: {error_type}")
+        print(f"   Details: {details}\n")
 
     def _handle_login_success(self, obj: dict):
         username = obj.get('username')
@@ -127,8 +130,10 @@ class MessageHandler:
     def _handle_signup_success(self, obj: dict):
         username = obj.get('username')
         message = obj.get('message', 'Account created!')
+        # Don't set alias - user must login after signup
         print(f"\n✓ {message}")
         print(f"Username: {username}")
+        print("Please login with your credentials.")
 
     def _handle_unread_counts(self, obj: dict):
         counts = obj.get('counts', {})

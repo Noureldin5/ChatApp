@@ -1,5 +1,7 @@
 from client.client import ChatClient
 import getpass
+import threading
+import time
 
 
 def main():
@@ -10,6 +12,11 @@ def main():
 
     client = ChatClient()
     client.connect()
+
+    # Start receiver thread to handle server responses
+    receiver_thread = threading.Thread(target=client._receive_messages, daemon=True)
+    receiver_thread.start()
+    time.sleep(0.5)  # Give receiver time to start
 
     if choice == "2":
         print("\n--- Sign Up ---")
@@ -29,12 +36,12 @@ def main():
 
         client.signup(username, password, tz)
         print("\nWaiting for server response...")
-        import time
         time.sleep(2)
 
-        if not client.alias:
-            print("\nSignup failed! Please try logging in or use a different username.")
-            return
+        # After signup, user should see success message from handler
+        # Then exit - they need to run the program again to login
+        print("\n✓ Signup process complete. Please run the program again to login.")
+        return
 
     else:
         print("\n--- Login ---")
@@ -43,7 +50,6 @@ def main():
 
         client.login(username, password)
         print("\nWaiting for authentication...")
-        import time
         time.sleep(2)
 
         if not client.alias:
@@ -51,7 +57,8 @@ def main():
             return
 
     print(f"\n✓ Authenticated as: {client.alias}")
-    client.start()
+    # Don't call client.start() since receiver is already running
+    client._command_loop()
 
 
 if __name__ == "__main__":
