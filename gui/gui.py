@@ -765,7 +765,9 @@ class ChatGUI(QMainWindow):
         except:
             pass
 
+        # Update UI indicators
         self._update_unread_indicators()
+        self._refresh_chats()  # Refresh to remove unread badge
 
         # Load message history (no loading screen)
         self.messages_area.clear()
@@ -804,7 +806,9 @@ class ChatGUI(QMainWindow):
         except:
             pass
 
+        # Update UI indicators
         self._update_unread_indicators()
+        self._refresh_groups()  # Refresh to remove unread badge
 
         # Load group message history (no loading screen)
         self.messages_area.clear()

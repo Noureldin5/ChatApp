@@ -391,11 +391,9 @@ class ClientHandler:
         chat_with = obj.get('with_user')
         limit = obj.get('limit', 50)
 
-        self.server.db.reset_unread(self.user.username, chat_with)
-
         is_group = chat_with in self.server.groups
         rows = self.server.db.get_message_history(self.user.username, chat_with, limit, is_group)
-        rows = self.server.db.get_unread_history(self.user.username, chat_with, limit, is_group)
+        self.server.db.reset_unread(self.user.username, chat_with)
 
 
         history = []
@@ -419,8 +417,6 @@ class ClientHandler:
             'cleared': self.server.db.get_cleared_timestamp(self.user.username, chat_with) > 0
         }
         print(f"[Server] Sending message_history response to {self.user.username}: {len(history)} messages")
-        result = self.user.send(json.dumps(response))
-        print(f"[Server] Send result: {result}")
         self.user.send(json.dumps(response))
 
     def _handle_get_unread_counts(self, obj: dict):

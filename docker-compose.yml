@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  server:
+    build: .
+    container_name: chatapp-server
+    ports:
+      - "59394:59394"
+    volumes:
+      # Persist database outside container
+      - ./chatapp.db:/app/chatapp.db
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+

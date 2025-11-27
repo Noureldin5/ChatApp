@@ -1,0 +1,49 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Database files (optional - remove if you want to include existing DB)
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+test_*.py
+tests/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Audio files
+*.wav
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+
